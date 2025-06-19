@@ -8,10 +8,10 @@ import (
 
 type Acktype int
 
-type simpleQueueType int
+type SimpleQueueType int
 
 const (
-	QueueDurable simpleQueueType = iota
+	QueueDurable SimpleQueueType = iota
 	QueueTransient
 )
 
@@ -20,7 +20,7 @@ func DeclareAndBind(
 	exchange,
 	queueName,
 	key string,
-	queueType simpleQueueType, // an enum to represent "durable" or "transient"
+	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
 ) (*amqp.Channel, amqp.Queue, error) {
 
 	ch, err := conn.Channel()

@@ -11,20 +11,18 @@ import (
 )
 
 func main() {
-	connString := "amqp://guest:guest@localhost:5672/"
+	const connString = "amqp://guest:guest@localhost:5672/"
 	conn, err := amqp.Dial(connString)
 	if err != nil {
 		log.Fatalf("❌ Failed to connect to RabbitMQ: %v", err)
 	}
 	defer conn.Close()
+	fmt.Println("✅ Successfully connected to RabbitMQ")
 
 	ch, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("❌ Failed to open a channel: %v", err)
 	}
-	defer ch.Close()
-
-	fmt.Println("✅ Successfully connected to RabbitMQ")
 
 	_, queue, err := pubsub.DeclareAndBind(
 		conn,
@@ -47,9 +45,9 @@ func main() {
 		switch words[0] {
 		case "pause":
 			fmt.Println("⏸️ Sending pause message...")
-			err := pubsub.PublishJSON(
+			err = pubsub.PublishJSON(
 				ch,
-				routing.ExchangePerilTopic,
+				routing.ExchangePerilDirect,
 				routing.PauseKey,
 				routing.PlayingState{IsPaused: true},
 			)
@@ -58,7 +56,12 @@ func main() {
 			}
 		case "resume":
 			fmt.Println("▶️ Sending resume message...")
-			err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+			err := pubsub.PublishJSON(
+				ch,
+				routing.ExchangePerilDirect,
+				routing.PauseKey,
+				routing.PlayingState{IsPaused: false},
+			)
 			if err != nil {
 				log.Fatalf("❌ Failed to publish message: %v", err)
 			}
@@ -68,6 +71,5 @@ func main() {
 		default:
 			fmt.Printf("❓ Unknown command: %q\n", words[0])
 		}
-
 	}
 }

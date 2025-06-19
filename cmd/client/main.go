@@ -17,28 +17,37 @@ func main() {
 		log.Fatalf("❌ Failed to connect to RabbitMQ: %v", err)
 	}
 	defer conn.Close()
-
 	fmt.Println("✅ Successfully connected to RabbitMQ")
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("❌ Failed to create AMQP channel: %v", err)
+	}
 
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatalf("❌ Failed to connect to user: %v", err)
 	}
 
-	_, queue, err := pubsub.DeclareAndBind(
+	gs := gamelogic.NewGameState(username)
+
+	pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix+"."+username,
+		routing.ArmyMovesPrefix+".*",
+		pubsub.QueueTransient,
+		HandlerMove(gs),
+	)
+
+	pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
 		routing.PauseKey+"."+username,
 		routing.PauseKey,
 		pubsub.QueueTransient,
+		HandlerPause(gs),
 	)
-	if err != nil {
-		log.Fatalf("❌ Failed to declare and bind queue: %v", err)
-	}
-
-	fmt.Printf("📥 Waiting for messages on queue %q\n", queue.Name)
-
-	gamestate := gamelogic.NewGameState(username)
 
 	for {
 		words := gamelogic.GetInput()
@@ -47,20 +56,32 @@ func main() {
 		}
 		switch words[0] {
 		case "spawn":
-			err := gamestate.CommandSpawn(words)
+			err := gs.CommandSpawn(words)
 			if err != nil {
 				fmt.Printf("❌ Failed to spawn unit: %v\n", err)
 				continue
 			}
 		case "move":
-			_, err := gamestate.CommandMove(words)
+			move, err := gs.CommandMove(words)
 			if err != nil {
 				fmt.Printf("❌ Failed to move: %v\n", err)
 				continue
 			}
 			fmt.Println("✅ You successfully moved!")
+
+			err = pubsub.PublishJSON(
+				ch,
+				routing.ExchangePerilTopic,
+				routing.ArmyMovesPrefix+"."+username,
+				move,
+			)
+			if err != nil {
+				fmt.Printf("❌ Failed to publish move: %v\n", err)
+			} else {
+				fmt.Println("📤 Move published successfully.")
+			}
 		case "status":
-			gamestate.CommandStatus()
+			gs.CommandStatus()
 		case "help":
 			gamelogic.PrintClientHelp()
 		case "spam":
