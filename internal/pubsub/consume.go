@@ -6,8 +6,6 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type Acktype int
-
 type SimpleQueueType int
 
 const (
@@ -28,15 +26,19 @@ func DeclareAndBind(
 		return nil, amqp.Queue{}, fmt.Errorf("could not create channel: %w", err)
 	}
 
+	args := amqp.Table{
+		"x-dead-letter-exchange": "peril_dlx", // 🔥 dead letter exchange
+	}
+
 	queue, err := ch.QueueDeclare(
 		queueName,
 		queueType == QueueDurable, //durable
 		queueType != QueueDurable, //autodelete
 		queueType != QueueDurable, //exclusive
 		false,
-		nil)
+		args,
+	)
 	if err != nil {
-		ch.Close()
 		return nil, amqp.Queue{}, fmt.Errorf("could not declare queue: %w", err)
 	}
 
@@ -48,7 +50,6 @@ func DeclareAndBind(
 		nil,
 	)
 	if err != nil {
-		ch.Close()
 		return nil, amqp.Queue{}, fmt.Errorf("could not bind queue: %w", err)
 	}
 	return ch, queue, nil

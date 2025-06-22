@@ -37,7 +37,7 @@ func main() {
 		routing.ArmyMovesPrefix+"."+username,
 		routing.ArmyMovesPrefix+".*",
 		pubsub.QueueTransient,
-		HandlerMove(gs),
+		HandlerMove(gs, ch),
 	)
 
 	pubsub.SubscribeJSON(
@@ -48,7 +48,14 @@ func main() {
 		pubsub.QueueTransient,
 		HandlerPause(gs),
 	)
-
+	pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.QueueDurable,
+		HandlerConsume(gs),
+	)
 	for {
 		words := gamelogic.GetInput()
 		if len(words) == 0 {
