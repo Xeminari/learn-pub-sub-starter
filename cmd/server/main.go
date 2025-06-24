@@ -24,17 +24,26 @@ func main() {
 		log.Fatalf("❌ Failed to open a channel: %v", err)
 	}
 
-	_, queue, err := pubsub.DeclareAndBind(
+	err = pubsub.SubscribeGob(
 		conn,
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
-		routing.PauseKey+"*",
+		routing.GameLogSlug+".*", // "game_logs.*"
 		pubsub.QueueDurable,
+		func(log routing.GameLog) pubsub.AckType {
+			defer fmt.Print("> ")
+			if err := gamelogic.WriteLog(log); err != nil {
+				fmt.Printf("❌ Failed to write log: %v\n", err)
+				return pubsub.NackDiscard
+			}
+			fmt.Printf("📜 Log written for %s: %s\n", log.Username, log.Message)
+			return pubsub.Ack
+		},
 	)
 	if err != nil {
-		log.Fatalf("❌ Failed to declare and bind queue: %v", err)
+		log.Fatalf("❌ Failed to bind to game_logs.*: %v", err)
 	}
-	fmt.Printf("📥 Waiting for messages on queue %q\n", queue.Name)
+	fmt.Println("📥 Waiting for pause/resume commands...")
 	gamelogic.PrintServerHelp()
 
 	for {

@@ -1,6 +1,8 @@
 package pubsub
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"log"
 
@@ -23,18 +25,56 @@ func SubscribeJSON[T any](
 	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
 	handler func(T) AckType,
 ) error {
-	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
+	unmarshaller := func(data []byte) (T, error) {
+		var v T
+		err := json.Unmarshal(data, &v)
+		return v, err
+	}
+	return subscribe(conn, exchange, queueName, key, queueType, handler, unmarshaller)
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
+	handler func(T) AckType,
+) error {
+	unmarshaller := func(data []byte) (T, error) {
+		var v T
+		buf := bytes.NewBuffer(data)
+		dec := gob.NewDecoder(buf)
+		err := dec.Decode(&v)
+		return v, err
+	}
+	return subscribe(conn, exchange, queueName, key, queueType, handler, unmarshaller)
+}
+
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T) AckType,
+	unmarshaller func([]byte) (T, error),
+) error {
+	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
+		return err
+	}
+	if err := ch.Qos(10, 0, false); err != nil {
 		return err
 	}
 	msgs, err := ch.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		return err
 	}
+
 	go func() {
 		for msg := range msgs {
-			var payload T
-			err := json.Unmarshal(msg.Body, &payload)
+			payload, err := unmarshaller(msg.Body)
 			if err != nil {
 				log.Printf("❌ Failed to unmarshal message: %v", err)
 				_ = msg.Nack(false, false)
@@ -46,10 +86,10 @@ func SubscribeJSON[T any](
 				log.Printf("✅ Acknowledged!")
 			case NackRequeue:
 				_ = msg.Nack(false, true)
-				log.Printf("✅ Nack and Reque!")
+				log.Printf("🔁 Nack and Requeue!")
 			case NackDiscard:
 				_ = msg.Nack(false, false)
-				log.Printf("✅ Nack and Discard!")
+				log.Printf("🗑️ Nack and Discard!")
 			}
 		}
 	}()
